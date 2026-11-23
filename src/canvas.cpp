@@ -164,10 +164,14 @@ canvas::canvas(std::string canvas_id,
                rectangle coordinate_system,
                color background_color)
     : m_canvas_id(std::move(canvas_id))
-    , m_draw_persistent_callback(draw_persistent_callback)
     , m_camera(coordinate_system)
     , m_background_color(background_color)
 {
+  if (draw_persistent_callback) {
+    m_draw_persistent_callback = draw_persistent_callback;
+  } else {
+    q_warning("canvas %s: persistent draw callback is NULL! If the immediate callback is set, the canvas will still render immediate content.", m_canvas_id.c_str());
+  }
 }
 
 void canvas::initialize(QWidget *drawing_area)
