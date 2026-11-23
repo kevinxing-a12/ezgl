@@ -43,9 +43,7 @@ void rhi_backend::redraw()
     }
 
     m_draw_persistent_callback(m_renderer.get());
-    if (m_draw_immediate_callback) {
-        m_draw_immediate_callback(m_renderer->get_immediate_renderer());
-    }
+    m_draw_immediate_callback(m_renderer->get_immediate_renderer());
     m_renderer->flush();
 
     m_is_redraw_suspended        = false;
@@ -71,19 +69,13 @@ bool rhi_backend::valid_to_reuse_geometry(view_change_reason reason)
         return false;
     }
 
-    // The callback function is not available. Default to reuse.
-    if (!m_decide_reuse_geometry_callback)
-        return true;
-
     // Let the client decide if the geometry can be reused.
     return m_decide_reuse_geometry_callback(reason, m_renderer.get());
 }
 
 void rhi_backend::redraw_camera_only() {
     m_renderer->begin_overlays_frames();
-    if (m_draw_immediate_callback) {
-        m_draw_immediate_callback(m_renderer->get_immediate_renderer());
-    }
+    m_draw_immediate_callback(m_renderer->get_immediate_renderer());
     m_renderer->flush_mvp_only();
     m_is_redraw_requested        = false;
     m_is_camera_update_requested = false;
@@ -171,10 +163,7 @@ QImage rhi_backend::render_to_image(int w, int h)
     renderer.begin_frame();
 
     m_draw_persistent_callback(&renderer);
-    
-    if (m_draw_immediate_callback) {
-        m_draw_immediate_callback(renderer.get_immediate_renderer());
-    }
+    m_draw_immediate_callback(renderer.get_immediate_renderer());
 
     auto frame = renderer.flush_capture(m_bg_color);
     return RhiCanvasWidget::render_offscreen(w, h,

@@ -161,12 +161,10 @@ void canvas::draw_offscreen(int output_width, int output_height)
 
 canvas::canvas(std::string canvas_id,
                draw_canvas_persistent_fn draw_persistent_callback,
-               draw_canvas_immediate_fn draw_immediate_callback,
                rectangle coordinate_system,
                color background_color)
     : m_canvas_id(std::move(canvas_id))
     , m_draw_persistent_callback(draw_persistent_callback)
-    , m_draw_immediate_callback(draw_immediate_callback)
     , m_camera(coordinate_system)
     , m_background_color(background_color)
 {
@@ -241,6 +239,24 @@ void canvas::redraw_at_view_change(view_change_reason reason)
 {
   if (m_backend)
     m_backend->redraw_at_view_change(reason);
+}
+
+void canvas::set_decide_reuse_geometry_callback(decide_reuse_geometry_fn cbk)
+{
+  if (cbk) {
+    m_decide_reuse_geometry_callback = cbk;
+  } else {
+    q_warning("canvas: set_decide_reuse_geometry_callback() called with nullptr; camera-only redraws will always be used.");
+  }
+}
+
+void canvas::set_draw_immediate_callback(draw_canvas_immediate_fn cbk)
+{
+  if (cbk) {
+    m_draw_immediate_callback = cbk;
+  } else {
+    q_warning("canvas: set_draw_immediate_callback() called with nullptr; immediate redraws will be disabled.");
+  }
 }
 
 renderer *canvas::create_animation_renderer()

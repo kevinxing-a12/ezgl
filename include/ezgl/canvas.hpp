@@ -115,15 +115,9 @@ public:
    * Set the callback which decides before a camera-only redraw if the cached geometry can be reused. Only meaningful on the RHI path.
    * If this setter is not called, redraw_at_view_change() will always perform a camera-only redraw.
    */
-  void set_decide_reuse_geometry_callback(decide_reuse_geometry_fn cbk)
-  {
-    m_decide_reuse_geometry_callback = cbk;
-  }
+  void set_decide_reuse_geometry_callback(decide_reuse_geometry_fn cbk);
 
-  void set_draw_immediate_callback(draw_canvas_immediate_fn cbk)
-  {
-    m_draw_immediate_callback = cbk;
-  }
+  void set_draw_immediate_callback(draw_canvas_immediate_fn cbk);
 
   /**
    * Get the currently selected rendering backend type.
@@ -181,7 +175,6 @@ protected:
    */
   canvas(std::string canvas_id,
         draw_canvas_persistent_fn draw_persistent_callback,
-        draw_canvas_immediate_fn draw_immediate_callback,
         rectangle coordinate_system,
         color background_color);
 
@@ -200,15 +193,13 @@ private:
   std::string m_canvas_id;
 
   // The function to call when the widget needs to be redrawn.
-  draw_canvas_persistent_fn m_draw_persistent_callback;
+  draw_canvas_persistent_fn m_draw_persistent_callback = [](renderer*) noexcept {};
 
-  draw_canvas_immediate_fn m_draw_immediate_callback = nullptr;
+  draw_canvas_immediate_fn m_draw_immediate_callback = [](renderer*) noexcept {};
 
   // A callback used before a camera-only redraw to determine if the cached geometry can be reused.
-  // Only used on the RHI path.
-  // If nullptr, redraw_at_view_change() will always perform a camera-only redraw.
-  decide_reuse_geometry_fn m_decide_reuse_geometry_callback = nullptr;
-
+  // Only used on the RHI path. If not explicitly set, it will always return true.
+  decide_reuse_geometry_fn m_decide_reuse_geometry_callback = [](view_change_reason, renderer*) noexcept {return true;};
   // The transformations between the GUI and the world.
   camera m_camera;
 
