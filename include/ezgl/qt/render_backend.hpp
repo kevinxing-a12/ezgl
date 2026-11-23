@@ -39,13 +39,34 @@ enum class view_change_reason {
     pan_zoom_out, ///< The visible world moved and world area increased.
 };
 
-/// Application-supplied scene-drawing callback.
+/**
+ * @brief Application-supplied main scene-drawing callback.
+ *
+ * Draw the main scene. The name "persistent" is trivial for the immediate and deferred backends,
+ * but meaningful for the RHI backend: it draws the scene into GPU buffers and a persistent overlay that can be reused across frames.
+ * Therfore, "persistent" refers to the nature of the scene geometry drawn here, rather than how this callback behaves.
+ */
 using draw_canvas_persistent_fn = std::function<void(renderer*)>;
+
+/**
+ * @brief Optional application-supplied callback for content that would otherwise force RHI to issue expensive full redraws.
+ *
+ * Meaningful on the RHI path only. For other backends, this is only a harmless complement to the persistent callback and is always run after it,
+ * since the difference between "persistent" and "immediate" only matters to RHI due to its GPU caching.
+ *
+ * For RHI, use this callback on content that you do not want to send to the GPU cache or the persistent overlay provided
+ * they are small and cheap to recompute. This callback is invoked at every frame regardless of whether the persistent callback is reused or not,
+ * and the output is painted into a separate overlay composited on top of the GPU scene buffers / persistent overlay.
+ * 
+ * This can be super helpful for small scene changes that would otherwise force a rebuild of the GPU buffers and persistent overlay,
+ * especially if they occur frequently and consequently impact rendering speed.
+ */
 using draw_canvas_immediate_fn = std::function<void(renderer*)>;
 
 /**
  * @brief Ask the client to decide whether cached scene geometry can be reused for the new view.
  * 
+ * Only exists on the RHI path.
  * Note: the world dimension has been updated by the time this callback is invoked.
  * 
  * @param reason Reason that triggers this view change (e.g. pan, zoom_in).
@@ -117,17 +138,18 @@ class render_backend {
 public:
     virtual ~render_backend() = default;
 
-    /// Full redraw: re-run the application draw callback to rebuild the
+    /// Full redraw: re-run both application draw callbacks to rebuild the
     /// scene from scratch. Use when scene state (block colors, route
     /// trees, …) has changed.
     virtual void redraw() = 0;
 
     /**
-     * @brief A camera-only (MVP) redraw when cached geometry is reusable, otherwise a full redraw. Meaningful on the RHI path only.
+     * @brief A camera-only (MVP) redraw when cached geometry is reusable, otherwise a full redraw.
+     *
+     * On non-RHI paths, this always falls back to a full redraw.
+     * RHI runs the immediate draw callback and replays the persistent overlay commands on a camera-only redraw.
      *
      * @param reason Reason that triggers this view change (e.g. pan, zoom_in).
-     * 
-     * On non-RHI paths, this always falls back to a full redraw.
      */
     virtual void redraw_at_view_change(view_change_reason reason) = 0;
 
