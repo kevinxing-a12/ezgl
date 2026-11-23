@@ -41,8 +41,8 @@ namespace ezgl {
  * The backing widget is selected at runtime via @ref render_backend (one of immediate / deferred / rhi); the canvas
  * connects to the widget's resize and paint events to remain responsive.
  *
- * Each canvas is double-buffered. A draw callback (see: ezgl::draw_canvas_persistent_fn) is invoked each time the canvas needs to
- * be redrawn. This may be caused by the user (e.g., resizing the screen), but can also be forced by the programmer.
+ * Each canvas is double-buffered. A full redraw runs the persistent draw callback
+ * followed by the optional immediate draw callback.
  */
 class canvas {
 public:
@@ -72,17 +72,18 @@ public:
   /**
    * Force the canvas to redraw itself.
    *
-   * This will invoke the ezgl::draw_canvas_persistent_fn callback and queue a redraw of the QWidget.
+   * This will invoke both draw callbacks and queue a redraw of the QWidget.
    */
   void redraw();
 
   /**
-   * @brief Redraw using only a camera (MVP) update when cached geometry is reusable. Meaningful on the RHI path only.
+   * @brief Perform a camera-only redraw when cached geometry is reusable. Meaningful on the RHI path only.
    *
    * @param reason Reason that triggers this view change (e.g. pan, zoom_in).
    * 
    * On the RHI path, the RHI backend checks whether the existing scene buffer can be reused.
-   * If reuse is allowed, the backend updates the camera transform/overlay without re-running the draw callback.
+   * If reuse is allowed, the backend updates the camera transform, runs the immediate draw callback,
+   * and replays the persistent overlay commands.
    * Otherwise, or on non-RHI paths, this falls back to a full redraw.
    */
   void redraw_at_view_change(view_change_reason reason);
@@ -117,6 +118,13 @@ public:
    */
   void set_decide_reuse_geometry_callback(decide_reuse_geometry_fn cbk);
 
+  /**
+   * @brief Set the optional immediate draw callback for view-dependent content.
+   *
+   * Set this before building the UI or rendering offscreen. The backend copies
+   * the callback when it is created.
+   * @see draw_canvas_immediate_fn
+   */
   void set_draw_immediate_callback(draw_canvas_immediate_fn cbk);
 
   /**
@@ -135,7 +143,7 @@ public:
    * Register a callback invoked after each canvas::redraw() completes.
    * Receives the total CPU time of the redraw in milliseconds — for RHI this
    * includes both command recording and flush(); for QPainter backends it
-   * covers the full draw callback execution.
+   * covers the execution of the full redraw.
    */
   void set_frame_timing_callback(std::function<void(double /*ms*/)> fn)
   {
@@ -160,7 +168,7 @@ public:
   bool print_png(const char *file_name, int width = 0, int height = 0);
 
   /**
-   * Run the draw callback on an offscreen surface of the given size without
+   * Run both draw callbacks on an offscreen surface of the given size without
    * saving any file. Use this to measure pure render time, separate from
    * PNG/PDF encoding overhead.
    */
@@ -192,9 +200,10 @@ private:
   // Name of the canvas in XML.
   std::string m_canvas_id;
 
-  // The function to call when the widget needs to be redrawn.
+  // Draws the main scene on full redraws.
   draw_canvas_persistent_fn m_draw_persistent_callback = [](renderer*) noexcept {};
 
+  // Draws view-dependent content on full redraws and RHI camera-only redraws.
   draw_canvas_immediate_fn m_draw_immediate_callback = [](renderer*) noexcept {};
 
   // A callback used before a camera-only redraw to determine if the cached geometry can be reused.
