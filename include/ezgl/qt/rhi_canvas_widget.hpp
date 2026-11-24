@@ -23,10 +23,11 @@ namespace ezgl {
  * for the swapchain.
  *
  * @par Thread-safe frame inbox
- * @ref rhi_renderer calls @ref set_frame_data / @ref set_mvp_only /
- * @ref set_mvp_and_overlay on the main thread; @ref render() consumes the
- * pending state on the Qt render thread. The inbox fields
- * (@c m_pending_scene_buffers, @c m_pending_mvp, @c m_pending_persistent_overlay,
+ * @ref rhi_renderer calls @ref set_frame_data or @ref set_mvp_and_overlay
+ * on the main thread. @ref render() consumes the pending state on the Qt
+ * render thread. The inbox fields
+ * (@c m_pending_scene_buffers, @c m_pending_mvp, @c m_pending_visible_world,
+ * @c m_pending_persistent_overlay, @c m_pending_immediate_overlay, and
  * @c m_pending_bg) are guarded by @c m_frame_mutex. Writers hold it
  * briefly to swap state and set @c m_frame_dirty / @c m_mvp_dirty. The
  * render thread snapshots and clears under the same lock at the top of
@@ -65,9 +66,9 @@ public:
 
     // ---- Frame data API (thread-safe, called from rhi_renderer) -------------
 
-    /// Full frame update: replace scene geometry, MVP, overlay, and
-    /// background. Marks both geometry and MVP dirty. Called after a
-    /// full @ref rhi_renderer::flush().
+    /// Full frame update: replace scene geometry, MVP, visible world, both
+    /// overlays, and background. Marks the frame dirty. Called by
+    /// @ref rhi_renderer::flush().
     void set_frame_data(SceneBuffers      scene_buffers,
                         const QMatrix4x4& world_to_ndc,
                         const rectangle&  visible_world,
@@ -75,16 +76,14 @@ public:
                         const QImage&     immediate_overlay,
                         QColor            bg_color);
 
-    /// MVP-only update for pan/zoom with no scene/overlay change. Marks
-    /// MVP dirty without invalidating geometry. The render thread will
-    /// re-render the cached scene with the new transform.
+    /// Update the MVP, visible world, and immediate overlay for a view change.
+    /// The render thread reuses the scene geometry and persistent overlay.
     void set_mvp_only(const QMatrix4x4& world_to_ndc,
                       const rectangle&  visible_world,
                       const QImage&     immediate_overlay);
 
-    /// MVP + overlay update: scene geometry unchanged, but overlay text /
-    /// arcs were re-laid out for the new camera. Used by
-    /// @ref rhi_renderer::flush_mvp_only().
+    /// Update the MVP, visible world, and both overlays while reusing the
+    /// scene geometry. Used by @ref rhi_renderer::flush_mvp_only().
     void set_mvp_and_overlay(const QMatrix4x4& world_to_ndc,
                              const rectangle&  visible_world,
                              const QImage&     persistent_overlay,
@@ -162,11 +161,11 @@ private:
     std::shared_ptr<const SceneBuffers>  m_pending_scene_buffers; ///< Next scene to draw; shared (not copied) with the main thread.
     QMatrix4x4                           m_pending_mvp;            ///< Next model-view-projection (MVP) matrix: the world→NDC transform.
     rectangle                            m_pending_visible_world;  ///< Next visible-world rect, used for per-chunk culling.
-    QImage                               m_pending_persistent_overlay; ///< Next persistent QPainter persistent_overlay image (text/arcs).
-    QImage                               m_pending_immediate_overlay;  ///< Next immediate QPainter immediate_overlay image.
+    QImage                               m_pending_persistent_overlay; ///< Next image painted from the persistent overlay commands.
+    QImage                               m_pending_immediate_overlay;  ///< Next image painted by the immediate draw callback.
     QColor                               m_pending_bg  { Qt::white }; ///< Next background clear colour.
     bool                                 m_frame_dirty = false;    ///< Set by set_frame_data(): geometry (and MVP) changed.
-    bool                                 m_mvp_dirty   = false;    ///< Set by the MVP-only paths: transform/overlay changed, geometry not.
+    bool                                 m_mvp_dirty   = false;    ///< Set when an MVP and overlay update is pending.
 };
 
 /**
