@@ -214,7 +214,7 @@ int canvas::width() const
   // Headless mode (e.g. --disp off + save_graphics): the widget tree is
   // never constructed so m_drawing_area is null. Fall back to the camera's
   // widget rect, which render_to_image() updates to the output framebuffer
-  // size before invoking the draw callback.
+  // size before invoking the draw callbacks.
   if (m_drawing_area == nullptr) return (int)m_camera.get_widget().width();
   return m_drawing_area->width();
 }
@@ -250,6 +250,8 @@ void canvas::set_decide_reuse_geometry_callback(decide_reuse_geometry_fn cbk)
   if (cbk) {
     m_decide_reuse_geometry_callback = cbk;
   } else {
+    // m_decide_reuse_geometry_callback is initialized to a no-op lambda in the constructor,
+    // so here we just keep using that.
     q_warning("canvas: set_decide_reuse_geometry_callback() called with nullptr; camera-only redraws will always be used.");
   }
 }
@@ -259,6 +261,7 @@ void canvas::set_draw_immediate_callback(draw_canvas_immediate_fn cbk)
   if (cbk) {
     m_draw_immediate_callback = cbk;
   } else {
+    // m_draw_immediate_callback is initialized to a no-op lambda in the constructor, like m_decide_reuse_geometry_callback.
     q_warning("canvas: set_draw_immediate_callback() called with nullptr; immediate redraws will be disabled.");
   }
 }

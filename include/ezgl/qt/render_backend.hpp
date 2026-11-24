@@ -49,16 +49,15 @@ enum class view_change_reason {
 using draw_canvas_persistent_fn = std::function<void(renderer*)>;
 
 /**
- * @brief Optional application-supplied callback for content that would otherwise force RHI to issue expensive full redraws.
+ * @brief Optional application-supplied callback for content that would otherwise force RHI to frequently issue expensive full redraws.
  *
- * Meaningful on the RHI path only. For other backends, this is only a harmless complement to the persistent callback and is always run after it,
- * since the difference between "persistent" and "immediate" only matters to RHI due to its GPU caching.
+ * Meaningful on the RHI path only. For other backends, this is only a harmless complement to the persistent callback and is always run after it.
  *
  * For RHI, use this callback on content that you do not want to send to the GPU cache or the persistent overlay provided
  * they are small and cheap to recompute. This callback is invoked at every frame regardless of whether the persistent callback is reused or not,
  * and the output is painted into a separate overlay composited on top of the GPU scene buffers / persistent overlay.
  * 
- * This can be super helpful for small scene changes that would otherwise force a rebuild of the GPU buffers and persistent overlay,
+ * This can be super helpful for small scene changes that would otherwise force a rebuild of the entire GPU buffers and persistent overlay,
  * especially if they occur frequently and consequently impact rendering speed.
  */
 using draw_canvas_immediate_fn = std::function<void(renderer*)>;
