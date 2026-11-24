@@ -52,7 +52,7 @@ using draw_canvas_persistent_fn = std::function<void(renderer*)>;
  * @brief Optional application-supplied callback for content that would otherwise force RHI to frequently issue expensive full redraws.
  *
  * Meaningful on the RHI path only. For other backends, this is only a harmless complement to the persistent callback and is always run after it,
- * yet we still need them to support this callback because the client does not know which backend is being used.
+ * yet we still need all backends to support this callback because the client does not know which backend is being used.
  *
  * For RHI, use this callback on content that you do not want to send to the GPU cache or the persistent overlay provided
  * they are small and cheap to recompute. This callback is invoked at every frame regardless of whether the persistent callback is reused or not,
