@@ -397,7 +397,7 @@ void RhiSceneRenderer::initialize(QRhi* rhi, QRhiRenderPassDescriptor* rp_desc)
     m_frame_resources.resize(std::size_t(n_slots));
     m_frame_slot_geom_valid.assign(std::size_t(n_slots), false);
 
-    // Linear, not Nearest: the overlay QImage is the same size as the
+    // Linear, not Nearest: the overlay QImages are the same size as the
     // framebuffer in the common case, but HiDPI / DPR != 1 / fractional
     // scaling all introduce non-integer scaling at blit time. Nearest
     // there produces blocky text edges; Linear preserves the QPainter's
@@ -830,9 +830,9 @@ void RhiSceneRenderer::render(QRhiCommandBuffer*                         cb,
         cb->draw(4);
     };
 
-    // Draw persistent overlay.
+    // Draw the persistent overlay first so the immediate overlay appears above it.
     draw_overlay(persistent_overlay_in, fr.persistent_overlay_tex.get(), fr.persistent_overlay_srb.get());
-    
+
     // Draw immediate overlay.
     draw_overlay(immediate_overlay_in, fr.immediate_overlay_tex.get(), fr.immediate_overlay_srb.get());
 
