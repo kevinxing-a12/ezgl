@@ -19,7 +19,7 @@ namespace ezgl {
  * @brief GPU-backed @ref irenderer implementation. The recording side of
  * the rhi backend.
  *
- * Receives the application's draw callbacks (one method per primitive),
+ * Receives primitive calls from the application's persistent draw callback,
  * bins each primitive into a fixed 32x32 grid (@ref kTileGridDimension) of
  * per-style batches over the scene bounds, then on @ref flush() repacks the
  * occupied tile batches into scene-wide @ref ezgl::SceneBuffers with a
@@ -28,7 +28,7 @@ namespace ezgl {
  * thread.
  *
  * @par How chunks are built (two-stage: record then assemble)
- * During the user's draw callback (record stage), each primitive is
+ * During the persistent draw callback (record stage), each primitive is
  * clipped to the tile grid and appended into per-tile batches
  * (@c RhiTileBatch in @c m_tiles), grouped by @ref ezgl::StyleKey
  * within each tile via linear lookup over the tile's style-batch list.
@@ -67,6 +67,13 @@ namespace ezgl {
  * @ref m_persistent_overlay QImage. That QImage is uploaded as a GPU texture and
  * composited on top of the GPU layers by the overlay pipeline.
  *
+ * @par Why the rhi_renderer also owns a deferred_renderer and an immediate_renderer
+ * The deferred renderer keeps the persistent overlay commands across
+ * camera-only redraws so it can repaint them for the updated view from the
+ * same recording. The immediate callback issues fresh draw calls on each
+ * redraw, so an owned @ref immediate_renderer paints them directly into
+ * @ref m_immediate_overlay as they arrive.
+ *
  * @par Parallel record
  * Per-primitive-type command vectors are sharded across N bands of tile
  * rows where @c N = @c std::thread::hardware_concurrency(). Each band's
@@ -74,10 +81,10 @@ namespace ezgl {
  * are contention-free. See @c m_n_bands, @c m_rows_per_band.
  *
  * @par Camera-only redraws
- * On pan/zoom with no scene change, @ref flush_mvp_only() re-runs the
- * overlay callbacks (text/arc bounds depend on screen-space layout) but
- * leaves the GPU scene buffers untouched. The widget receives just a new
- * MVP + overlay image. The big win versus the deferred backend is here.
+ * When the scene geometry can be reused, @ref rhi_backend runs the immediate
+ * callback with the overlay's @ref immediate_renderer. @ref flush_mvp_only()
+ * then replays the persistent overlay commands and sends both overlay images
+ * and the updated MVP to the widget.
  *
  * @par Headless mode
  * The second constructor takes a @c QSize instead of a widget, and
@@ -104,14 +111,14 @@ public:
         QMatrix4x4   mvp;           ///< World→clip transform for this frame.
         rectangle    visible_world; ///< Visible world rect, used for chunk culling during the offscreen draw.
         QImage       persistent_overlay;       ///< Pre-rendered text/surface persistent overlay composited over the GPU frame.
-        QImage       immediate_overlay;
+        QImage       immediate_overlay;        ///< Image painted by the immediate draw callback.
         QColor       bg;            ///< Background clear color.
     };
 
     /**
      * Display constructor: bound to a live @ref RhiCanvasWidget. The
-     * widget's current size and devicePixelRatio define the overlay
-     * QImage resolution. @ref flush() pushes frame data into the widget's
+     * widget's current size and devicePixelRatio define the resolution of both
+     * overlay images. @ref flush() pushes frame data into the widget's
      * thread-safe inbox.
      */
     rhi_renderer(RhiCanvasWidget* widget,
@@ -128,7 +135,7 @@ public:
                  camera*          cam,
                  QColor           bg_color);
 
-    /// Default: the owned overlay deferred renderer and GPU scene state are
+    /// Default: the owned overlay renderers and GPU scene state are
     /// freed by their own destructors. The widget and camera are non-owning.
     ~rhi_renderer() = default;
 
@@ -244,51 +251,50 @@ public:
     //
     // Typical full-redraw cycle:
     //   begin_frame();
-    //   <user draw callback emits primitives via the irenderer methods above>
+    //   <run the persistent draw callback with this renderer>
+    //   <run the immediate draw callback with get_immediate_renderer()>
     //   flush();                         // → widget
     //
     // Camera-only redraw (pan/zoom, no scene change):
-    //   flush_mvp_only();                // overlay rebuilt; GPU scene untouched
+    //   begin_overlays_frames();
+    //   <run the immediate draw callback with get_immediate_renderer()>
+    //   flush_mvp_only();                // replay the persistent overlay and reuse geometry
     //
     // Headless save_graphics:
     //   begin_frame();
-    //   <draw callback>
+    //   <run both draw callbacks as in a full redraw>
     //   auto data = flush_capture(bg);   // returns by value, no widget
     //   QImage png = RhiCanvasWidget::render_offscreen(w, h, ...data...);
 
+    /// Prepare both overlay images and painters for the current view.
     void begin_overlays_frames();
 
-    /// Reset per-frame state (tile batches, command vectors, overlay)
+    /// Reset per-frame state (tile batches, persistent overlay commands, and both overlay images)
     /// ready for a fresh recording pass.
     void begin_frame();
 
     /// Repack tile batches into @ref SceneBuffers, push frame data into
-    /// the bound @ref RhiCanvasWidget, and schedule a repaint. Also ends
-    /// the overlay painter so the QImage is fully flushed to bytes.
+    /// the bound @ref RhiCanvasWidget, and schedule a repaint. Replay the
+    /// persistent overlay and end both painters before submitting the images.
     void flush();
 
     /// Headless variant of @ref flush(): dispatches commands to tiles,
-    /// builds @ref SceneBuffers, captures the overlay image, and returns
+    /// builds @ref SceneBuffers, captures both overlay images, and returns
     /// the assembled frame data without touching any widget. Used by
     /// @c rhi_backend::render_to_image() to feed the *static*
     /// @ref RhiCanvasWidget::render_offscreen(), which likewise needs no
     /// widget instance.
     HeadlessFrameData flush_capture(const QColor& bg);
 
-    /// Rebuild the overlay layer (text/arcs have screen-relative layout)
-    /// for the current camera and push a new MVP without re-running the
-    /// application draw callback or rebuilding any GPU scene buffers.
+    /// Replay the persistent overlay commands, finish both painters, and send
+    /// the overlay images and updated MVP to the widget. Call this after the
+    /// immediate callback has drawn into its overlay.
     ///
-    /// What gets re-uploaded on this path: just @c mvp_ubuf (80 B) plus
-    /// the overlay QImage as a texture (because text/arc bounds depend
-    /// on the camera). Scene VBOs are untouched in VRAM. The cheapness
-    /// of camera-only pan/zoom relies on @ref RhiSceneRenderer::render()
-    /// re-evaluating @ref ezgl::Chunk visibility against the new
-    /// @c visible_world on every frame (not only on @c geom_dirty), so
-    /// the freshly-pannned viewport's draw call set is recomputed
-    /// without rebuilding any geometry.
+    /// @ref RhiSceneRenderer::render() reuses the scene geometry and evaluates
+    /// @ref ezgl::Chunk visibility against the updated @c visible_world.
     void flush_mvp_only();
 
+    /// Return the renderer that paints directly into the immediate overlay.
     immediate_renderer* get_immediate_renderer() {
         return m_immediate_renderer.get();
     }
@@ -604,7 +610,7 @@ private:
     // camera-only redraw path. The GPU draws every recorded instance.
     std::vector<ArrowCmd>                   m_cmd_arrows;
 
-    // QPainter overlay — overlay commands (text, arcs, …) are stored in
+    // Persistent overlay — commands (text, arcs, …) are stored in
     // m_deferred_renderer and replayed into this image.
     QImage   m_persistent_overlay;
     Painter  m_persistent_overlay_painter;   // must be declared AFTER m_persistent_overlay
@@ -613,6 +619,7 @@ private:
     // painted into m_persistent_overlay_painter / m_persistent_overlay.
     std::unique_ptr<deferred_renderer> m_deferred_renderer;
 
+    // Immediate overlay — the callback's drawing is painted directly into this image.
     QImage m_immediate_overlay;
     Painter m_immediate_overlay_painter;
     std::unique_ptr<immediate_renderer> m_immediate_renderer;
