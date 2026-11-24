@@ -176,7 +176,7 @@ using DeferredCommand =
  * Two very different callers use it:
  * - @ref deferred_backend renders an *entire* frame through it — every
  *   primitive the application draws.
- * - @ref rhi_renderer uses it only *partially*, as an **overlay layer**: the
+ * - @ref rhi_renderer uses it for the **persistent overlay**: the
  *   bulk WORLD geometry is drawn on the GPU, and only the primitives the GPU
  *   path doesn't handle — text, arcs, surfaces, and SCREEN-coordinate
  *   primitives — are forwarded here, painted into an off-screen QImage, and
@@ -225,11 +225,9 @@ using DeferredCommand =
  *     4. draws the visible commands, applying each command's captured
  *        state and any camera-dependent transform (text rescale, arrow sizing).
  * - @ref flush() = @ref replay() then @ref reset(). @ref deferred_backend
- *   re-records every frame and calls @ref flush(). @ref rhi_renderer (only its
- *   overlay subset — text/arcs/surfaces/screen-coordinate primitives, see
- *   above) calls @ref replay() repeatedly across camera-only updates so those
- *   overlays follow the pan/zoom without re-recording, and @ref reset() only
- *   when the scene actually changes.
+ *   re-records every frame and calls @ref flush(). @ref rhi_renderer calls
+ *   @ref replay() on camera-only redraws so the persistent overlay follows
+ *   the current view, and @ref reset() when starting a full redraw.
  */
 class deferred_renderer : public irenderer {
 public:
@@ -329,7 +327,7 @@ public:
 
     // Replay all recorded batches and commands to the QPainter,
     // keeping them so they can be replayed again (e.g. rhi replaying its
-    // overlay subset on a camera-only redraw — see the class doc).
+    // persistent overlay on a camera-only redraw — see the class doc).
     void replay();
 
     // Discard all recorded batches and commands.
