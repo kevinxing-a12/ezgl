@@ -7,8 +7,8 @@ example in this repo puts that behind a `--renderer {immediate|deferred|rhi}`
 command-line flag, so the same drawing can be run through all three (see
 [`include/ezgl/qt/render_backend.hpp`](../include/ezgl/qt/render_backend.hpp)).
 The **default is `rhi`**; the other two are available for compatibility
-and fallback. All three render the same scenes; they differ only in
-*how* the primitives reach the screen.
+and fallback. On a full redraw, all three run the persistent draw callback
+followed by the optional immediate draw callback. See `ezgl::draw_canvas_persistent_fn` and `ezgl::draw_canvas_immediate_fn` in [`render_backend.hpp`](../include/ezgl/qt/render_backend.hpp) for details about the two draw callbacks.
 
 ---
 
@@ -16,15 +16,13 @@ and fallback. All three render the same scenes; they differ only in
 
 The baseline. Every `draw_line` / `fill_rectangle` / `draw_text` call
 forwards straight to a single QPainter call on a `QImage` backing store.
-There is no scene graph, no spatial index, no GPU. The whole frame is
-re-painted on every screen update by replaying the draw callback against
-the QPainter — same model as the original GTK/Cairo path the Qt port
-replaced.
+There is no scene graph, no spatial index, no GPU. Each redraw repaints
+the whole frame by running both draw callbacks against the same QPainter.
 
 **Pros**
 - Simplest path; correct by construction (whatever QPainter renders is
   what you get).
-- No setup cost — first frame is on screen as fast as the draw callback
+- No setup cost — first frame is on screen as fast as the draw callbacks
   can run.
 - Works under every Qt QPA platform (X11, Wayland, offscreen, etc.).
 - No GPU drivers, no shader compilation, no build-tool dependencies
@@ -45,9 +43,9 @@ three rendered targets).
 
 ## deferred
 
-Same QPainter rasterizer underneath, but every primitive emitted during
-the draw callback is recorded into per-type / per-style batches instead
-of dispatching immediately. At `flush()` time the batches replay through
+Same QPainter rasterizer underneath. The renderer records draw calls from
+both callbacks and groups common primitives into per-type / per-style
+batches. At `flush()` time the batches replay through
 QPainter's bulk APIs (`drawLines(QLineF*, n)`, `drawRects(QRectF*, n)`,
 …), setting the pen/brush once per batch instead of once per primitive.
 A per-frame spatial index over the recorded overlay primitives also lets
@@ -91,7 +89,9 @@ rasterization bottleneck of the QPainter-based paths.
   without CPU AA cost. Same sample count on-screen and in the offscreen
   `render_to_image()` path (the offscreen path resolves to a single-sample
   texture before readback so PNGs come out as you'd see them on screen).
-- Pan/zoom is a single MVP-matrix upload, not a re-rasterization.
+- When the scene geometry can be reused during pan or zoom, RHI applies
+  the updated camera transform to that geometry, replays the persistent
+  overlay commands, and runs the immediate callback without needing to rebuild the GPU buffers, significantly improving rendering speed.
 
 **Cons**
 - `QRhiWidget` cannot acquire a QRhi under `QT_QPA_PLATFORM=offscreen`.
@@ -99,10 +99,9 @@ rasterization bottleneck of the QPainter-based paths.
   as it is created and logs `canvas: no GPU backend available, falling
   back to immediate renderer.` Headless rendering is fine —
   `render_to_image()` creates an offscreen QRhi directly.
-- Some QPainter-only primitives (text, arcs, surfaces) still route
-  through a CPU-rendered overlay layer (an internal `deferred_renderer`
-  painting into a QImage that's composited over the GPU frame) — those
-  paths inherit deferred-mode cost.
+- Persistent text, arcs, and surfaces are painted on the CPU by an internal
+  `deferred_renderer`. The immediate callback paints into a second CPU-rendered
+  overlay through an internal `immediate_renderer`. RHI composites the persistent overlay over the GPU geometry and composites the immediate overlay last.
 - Driver-dependent: Vulkan/D3D12/Metal behavior is mostly portable, but
   GLSL variants and pipeline state differ per driver; the build bakes
   multiple GLSL versions (`100es,120,150,330`) plus HLSL 50 and MSL 12
