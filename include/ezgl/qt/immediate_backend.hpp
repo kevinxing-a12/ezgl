@@ -26,6 +26,7 @@ public:
      *                         which supplies the off-screen surface).
      * @param draw_persistent_callback    Application scene-drawing callback, invoked each
      *                         redraw.
+     * @param draw_immediate_callback Application draw callback invoked after the persistent callback.
      * @param cam              Camera supplying the view and world→screen
      *                         transform.
      * @param background_color Color the surface is cleared to before each frame.
@@ -42,7 +43,7 @@ public:
 
     // render_backend interface overrides.
 
-    /// @name Clear the surface to the background color, draw the scene directly through the immediate_renderer, and request a widget repaint.
+    /// @name Clear the surface to the background color, run both draw callbacks through the same immediate_renderer, and request a widget repaint.
     /// @{
     void redraw() override;
     /// @}
@@ -70,7 +71,7 @@ private:
 
     QWidget*            m_drawing_area;     ///< Target Qt widget (not owned); the DrawingAreaWidget supplying the surface.
     draw_canvas_persistent_fn      m_draw_persistent_callback;    ///< Application scene-drawing callback, invoked each redraw.
-    draw_canvas_immediate_fn       m_draw_immediate_callback = nullptr;
+    draw_canvas_immediate_fn       m_draw_immediate_callback; ///< Draws immediate content after the main scene.
     camera*             m_camera;           ///< Camera providing the view and world→screen transform (not owned).
     color               m_background_color; ///< Color the surface is cleared to before each frame.
 
