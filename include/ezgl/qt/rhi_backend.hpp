@@ -130,8 +130,8 @@ public:
 
 private:
     RhiCanvasWidget*              m_widget;                         ///< Non-owning on-screen canvas this backend presents into.
-    draw_canvas_persistent_fn m_draw_persistent_callback;     ///< User draw routine re-run on every full redraw.
-    draw_canvas_immediate_fn  m_draw_immediate_callback; ///< Draw routine run on full and camera-only redraws.
+    draw_canvas_persistent_fn     m_draw_persistent_callback;       ///< User draw routine re-run on every full redraw.
+    draw_canvas_immediate_fn      m_draw_immediate_callback;        ///< Draw routine run on full and camera-only redraws.
     decide_reuse_geometry_fn      m_decide_reuse_geometry_callback; ///< Callback used to determine if the cached geometry can be reused for a camera-only redraw.
     camera*                       m_camera;                         ///< Non-owning camera supplying the world→screen MVP.
     QColor                        m_bg_color;                       ///< Frame clear color.

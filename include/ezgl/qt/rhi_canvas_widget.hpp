@@ -157,15 +157,15 @@ private:
     std::unique_ptr<RhiSceneRenderer> m_scene_renderer; ///< Owns all GPU pipelines/buffers; created lazily in initialize().
 
     // ---- Pending frame state (written by rhi_renderer, read by render()) ----
-    mutable QMutex                       m_frame_mutex;           ///< Guards every m_pending_* field and the dirty flags below.
-    std::shared_ptr<const SceneBuffers>  m_pending_scene_buffers; ///< Next scene to draw; shared (not copied) with the main thread.
-    QMatrix4x4                           m_pending_mvp;            ///< Next model-view-projection (MVP) matrix: the world→NDC transform.
-    rectangle                            m_pending_visible_world;  ///< Next visible-world rect, used for per-chunk culling.
-    QImage                               m_pending_persistent_overlay; ///< Next image painted from the persistent overlay commands.
-    QImage                               m_pending_immediate_overlay;  ///< Next image painted by the immediate draw callback.
-    QColor                               m_pending_bg  { Qt::white }; ///< Next background clear colour.
-    bool                                 m_frame_dirty = false;    ///< Set by set_frame_data(): geometry (and MVP) changed.
-    bool                                 m_mvp_dirty   = false;    ///< Set when an MVP and overlay update is pending.
+    mutable QMutex                      m_frame_mutex;                ///< Guards every m_pending_* field and the dirty flags below.
+    std::shared_ptr<const SceneBuffers> m_pending_scene_buffers;      ///< Next scene to draw; shared (not copied) with the main thread.
+    QMatrix4x4                          m_pending_mvp;                ///< Next model-view-projection (MVP) matrix: the world→NDC transform.
+    rectangle                           m_pending_visible_world;      ///< Next visible-world rect, used for per-chunk culling.
+    QImage                              m_pending_persistent_overlay; ///< Next image painted from the persistent overlay commands.
+    QImage                              m_pending_immediate_overlay;  ///< Next image painted by the immediate draw callback.
+    QColor                              m_pending_bg  { Qt::white };  ///< Next background clear colour.
+    bool                                m_frame_dirty = false;        ///< Set by set_frame_data(): geometry (and MVP) changed.
+    bool                                m_mvp_dirty   = false;        ///< Set when an MVP and overlay update is pending.
 };
 
 /**

@@ -107,12 +107,12 @@ public:
     /// so the caller can render it via RhiCanvasWidget::render_offscreen() without
     /// needing a live QRhiWidget or QRhiWidget::grab().
     struct HeadlessFrameData {
-        SceneBuffers scene;         ///< CPU-side geometry to upload and draw on the offscreen GPU.
-        QMatrix4x4   mvp;           ///< World→clip transform for this frame.
-        rectangle    visible_world; ///< Visible world rect, used for chunk culling during the offscreen draw.
-        QImage       persistent_overlay;       ///< Pre-rendered text/surface persistent overlay composited over the GPU frame.
-        QImage       immediate_overlay;        ///< Image painted by the immediate draw callback.
-        QColor       bg;            ///< Background clear color.
+        SceneBuffers scene;              ///< CPU-side geometry to upload and draw on the offscreen GPU.
+        QMatrix4x4   mvp;                ///< World→clip transform for this frame.
+        rectangle    visible_world;      ///< Visible world rect, used for chunk culling during the offscreen draw.
+        QImage       persistent_overlay; ///< Pre-rendered text/surface persistent overlay composited over the GPU frame.
+        QImage       immediate_overlay;  ///< Image painted by the immediate draw callback.
+        QColor       bg;                 ///< Background clear color.
     };
 
     /**
@@ -614,8 +614,8 @@ private:
     std::unique_ptr<deferred_renderer> m_deferred_renderer;
 
     // Immediate overlay — the callback's drawing is painted directly into this image.
-    QImage m_immediate_overlay;
-    Painter m_immediate_overlay_painter;
+    QImage                              m_immediate_overlay;
+    Painter                             m_immediate_overlay_painter;
     std::unique_ptr<immediate_renderer> m_immediate_renderer;
 };
 

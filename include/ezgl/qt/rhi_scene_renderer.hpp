@@ -217,20 +217,20 @@ private:
     /// type because a single style's geometry may span several buffers (see
     /// @ref GpuChunk::buffer_index).
     struct FrameResources {
-        std::unique_ptr<QRhiBuffer>                 mvp_ubuf;   ///< Per-frame UBO: mvp matrix + viewport (binding 0).
-        std::unique_ptr<QRhiBuffer>                 style_ubuf; ///< Per-style UBO: one colour/line slot per StyleKey (binding 1).
+        std::unique_ptr<QRhiBuffer>                 mvp_ubuf;                   ///< Per-frame UBO: mvp matrix + viewport (binding 0).
+        std::unique_ptr<QRhiBuffer>                 style_ubuf;                 ///< Per-style UBO: one colour/line slot per StyleKey (binding 1).
         std::vector<std::unique_ptr<QRhiBuffer>>    thin_line_vbufs;            ///< Thin-line vertex buffers.
         std::vector<std::unique_ptr<QRhiBuffer>>    fill_rect_instance_vbufs;   ///< Filled-rect instance buffers.
         std::vector<std::unique_ptr<QRhiBuffer>>    fill_poly_vbufs;            ///< Filled-poly vertex buffers.
         std::vector<std::unique_ptr<QRhiBuffer>>    thick_line_instance_vbufs;  ///< Thick-line instance buffers.
         std::vector<std::unique_ptr<QRhiBuffer>>    dashed_line_instance_vbufs; ///< Dashed-line instance buffers.
         std::vector<std::unique_ptr<QRhiBuffer>>    arrow_instance_vbufs;       ///< Arrow instance buffers.
-        std::unique_ptr<QRhiTexture>                persistent_overlay_tex; ///< This slot's copy of the persistent QPainter overlay image.
-        std::unique_ptr<QRhiShaderResourceBindings> persistent_overlay_srb; ///< SRB binding @c persistent_overlay_tex + sampler for the overlay pass.
-        std::unique_ptr<QRhiTexture>                immediate_overlay_tex; ///< Immediate overlay texture.
-        std::unique_ptr<QRhiShaderResourceBindings> immediate_overlay_srb; ///< Immediate texture bindings.
-        std::unique_ptr<QRhiShaderResourceBindings> srb;         ///< SRB for scene draws (mvp UBO + dynamic-offset style UBO).
-        GpuSceneBuffers                             gpu_scene;   ///< This slot's uploaded draw plan.
+        std::unique_ptr<QRhiTexture>                persistent_overlay_tex;     ///< This slot's copy of the persistent QPainter overlay image.
+        std::unique_ptr<QRhiShaderResourceBindings> persistent_overlay_srb;     ///< SRB binding @c persistent_overlay_tex + sampler for the overlay pass.
+        std::unique_ptr<QRhiTexture>                immediate_overlay_tex;      ///< Immediate overlay texture.
+        std::unique_ptr<QRhiShaderResourceBindings> immediate_overlay_srb;      ///< Immediate texture bindings.
+        std::unique_ptr<QRhiShaderResourceBindings> srb;                        ///< SRB for scene draws (mvp UBO + dynamic-offset style UBO).
+        GpuSceneBuffers                             gpu_scene;                  ///< This slot's uploaded draw plan.
     };
 
     // ---- state --------------------------------------------------------------
