@@ -513,16 +513,6 @@ void RhiSceneRenderer::render(QRhiCommandBuffer*                         cb,
 
     FrameResources& fr = m_frame_resources[std::size_t(frame_slot)];
 
-    QImage persistent_overlay = persistent_overlay_in;
-    const bool has_persistent_overlay = !persistent_overlay.isNull();
-    if (has_persistent_overlay)
-        persistent_overlay = persistent_overlay.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
-
-    QImage immediate_overlay = immediate_overlay_in;
-    const bool has_immediate_overlay = !immediate_overlay.isNull();
-    if (has_immediate_overlay)
-        immediate_overlay = immediate_overlay.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
-
     // ---- Upload -------------------------------------------------------------
     QRhiResourceUpdateBatch* u = m_rhi->nextResourceUpdateBatch();
 
@@ -550,41 +540,37 @@ void RhiSceneRenderer::render(QRhiCommandBuffer*                         cb,
                                int(sizeof(kQuad)), kQuad);
     }
 
-    // Overlay texture
-    if (has_persistent_overlay) {
-        const QSize persistent_overlay_size = persistent_overlay.size();
-        if (!fr.persistent_overlay_tex || fr.persistent_overlay_tex->pixelSize() != persistent_overlay_size) {
-            fr.persistent_overlay_srb.reset();
-            fr.persistent_overlay_tex.reset(m_rhi->newTexture(QRhiTexture::RGBA8, persistent_overlay_size));
-            fr.persistent_overlay_tex->create();
-            fr.persistent_overlay_srb.reset(m_rhi->newShaderResourceBindings());
-            fr.persistent_overlay_srb->setBindings({
+    const auto upload_overlay = [this, u](const QImage& overlay_image,
+                                        std::unique_ptr<QRhiTexture>& overlay_tex,
+                                        std::unique_ptr<QRhiShaderResourceBindings>& overlay_srb) {
+        if (overlay_image.isNull())
+            return;
+
+        const QImage overlay = overlay_image.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
+        const QSize size = overlay.size();
+
+        if (!overlay_tex || overlay_tex->pixelSize() != size) {
+            overlay_srb.reset();
+            overlay_tex.reset(m_rhi->newTexture(QRhiTexture::RGBA8, size));
+            overlay_tex->create();
+
+            overlay_srb.reset(m_rhi->newShaderResourceBindings());
+            overlay_srb->setBindings({
                 QRhiShaderResourceBinding::sampledTexture(
                     0, QRhiShaderResourceBinding::FragmentStage,
-                    fr.persistent_overlay_tex.get(), m_overlay_sampler.get())
+                    overlay_tex.get(), m_overlay_sampler.get())
             });
-            fr.persistent_overlay_srb->create();
+            overlay_srb->create();
         }
-        u->uploadTexture(fr.persistent_overlay_tex.get(), persistent_overlay);
-    }
+
+        u->uploadTexture(overlay_tex.get(), overlay);
+    };
+
+    // Persistent overlay texture
+    upload_overlay(persistent_overlay_in, fr.persistent_overlay_tex, fr.persistent_overlay_srb);
 
     // Immediate overlay texture
-    if (has_immediate_overlay) {
-        const QSize immediate_overlay_size = immediate_overlay.size();
-        if (!fr.immediate_overlay_tex || fr.immediate_overlay_tex->pixelSize() != immediate_overlay_size) {
-            fr.immediate_overlay_srb.reset();
-            fr.immediate_overlay_tex.reset(m_rhi->newTexture(QRhiTexture::RGBA8, immediate_overlay_size));
-            fr.immediate_overlay_tex->create();
-            fr.immediate_overlay_srb.reset(m_rhi->newShaderResourceBindings());
-            fr.immediate_overlay_srb->setBindings({
-                QRhiShaderResourceBinding::sampledTexture(
-                    0, QRhiShaderResourceBinding::FragmentStage,
-                    fr.immediate_overlay_tex.get(), m_overlay_sampler.get())
-            });
-            fr.immediate_overlay_srb->create();
-        }
-        u->uploadTexture(fr.immediate_overlay_tex.get(), immediate_overlay);
-    }
+    upload_overlay(immediate_overlay_in, fr.immediate_overlay_tex, fr.immediate_overlay_srb);
 
     // Geometry: style UBO + vertex buffers
     if (upload_geom && scene_buffers) {
@@ -831,21 +817,24 @@ void RhiSceneRenderer::render(QRhiCommandBuffer*                         cb,
         }
     }
 
-    if (has_immediate_overlay && fr.immediate_overlay_tex) {
+    const auto draw_overlay = [this, cb](const QImage& overlay_image,     
+                                         QRhiTexture* overlay_tex,
+                                         QRhiShaderResourceBindings* overlay_srb) {
+        if (overlay_image.isNull() || !overlay_tex)
+            return;
+        
         cb->setGraphicsPipeline(m_overlay_pso.get());
-        cb->setShaderResources(fr.immediate_overlay_srb.get());
+        cb->setShaderResources(overlay_srb);
         const QRhiCommandBuffer::VertexInput vi{m_overlay_quad_vbuf.get(), 0};
         cb->setVertexInput(0, 1, &vi);
         cb->draw(4);
-    }
+    };
 
-    if (has_persistent_overlay && fr.persistent_overlay_tex) {
-        cb->setGraphicsPipeline(m_overlay_pso.get());
-        cb->setShaderResources(fr.persistent_overlay_srb.get());
-        const QRhiCommandBuffer::VertexInput vi{m_overlay_quad_vbuf.get(), 0};
-        cb->setVertexInput(0, 1, &vi);
-        cb->draw(4);
-    }
+    // Draw persistent overlay.
+    draw_overlay(persistent_overlay_in, fr.persistent_overlay_tex.get(), fr.persistent_overlay_srb.get());
+    
+    // Draw immediate overlay.
+    draw_overlay(immediate_overlay_in, fr.immediate_overlay_tex.get(), fr.immediate_overlay_srb.get());
 
     cb->endPass();
 }
