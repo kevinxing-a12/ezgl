@@ -511,16 +511,10 @@ private:
                                              const point2d& end,
                                              StyleKey   style_key,
                                              std::uint32_t rgba);
-
-    void end_overlays_painters();
-    /// (Re)create the overlay QImage at the current size/DPR, clear it to
-    /// transparent, and begin its painter so overlay draw calls can paint.
-    void begin_persistent_overlay_frame();
     
-    /**
-     * @brief Prepare a cleared immediate overlay and reset its drawing state.
-     */
-    void begin_immediate_overlay_frame();
+    /// End the persistent and immediate overlay painters if they are active.
+    void end_overlays_painters();
+    
     /// Allocate/resize the tile grid and recompute each tile's world bounds
     /// for the current visible world.
     void ensure_tile_grid();

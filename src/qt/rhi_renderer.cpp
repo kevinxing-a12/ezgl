@@ -687,48 +687,32 @@ void rhi_renderer::begin_overlays_frames() {
         m_overlay_dpr = m_rhi_widget->devicePixelRatioF();
     }
     end_overlays_painters();
-    begin_persistent_overlay_frame();
-    begin_immediate_overlay_frame();
-}
-
-void rhi_renderer::begin_persistent_overlay_frame()
-{
+    
     const QSize wanted_overlay_px = physical_overlay_size(m_size, m_overlay_dpr);
-    if (m_persistent_overlay.size() != wanted_overlay_px
-        || m_persistent_overlay.devicePixelRatio() != m_overlay_dpr) {
-        m_persistent_overlay = QImage(wanted_overlay_px, QImage::Format_ARGB32_Premultiplied);
-        m_persistent_overlay.setDevicePixelRatio(m_overlay_dpr);
-    }
+    const qreal overlay_dpr = m_overlay_dpr;
+    const auto begin_overlay_frame = [wanted_overlay_px, overlay_dpr](QImage& overlay, Painter& painter) {
+        if (overlay.size() != wanted_overlay_px || overlay.devicePixelRatio() != overlay_dpr) {
+            overlay = QImage(wanted_overlay_px, QImage::Format_ARGB32_Premultiplied);
+            overlay.setDevicePixelRatio(overlay_dpr);
+        }
 
-    m_persistent_overlay.fill(Qt::transparent);
+        overlay.fill(Qt::transparent);
+        painter.begin(&overlay);
+        painter.setAntialias(false);
+        painter.setSmoothPixmap(false);
+    };
 
-    m_persistent_overlay_painter.begin(&m_persistent_overlay);
-    m_persistent_overlay_painter.setAntialias(false);
-    m_persistent_overlay_painter.setSmoothPixmap(false);
+    begin_overlay_frame(m_persistent_overlay, m_persistent_overlay_painter);
+    // Bind the persistent painter to both the rhi and deferred renderers.
     set_painter(&m_persistent_overlay_painter);
     m_deferred_renderer->set_painter(&m_persistent_overlay_painter);
-
     m_skip_tile_writes = false;
-}
 
-void rhi_renderer::begin_immediate_overlay_frame()
-{
-    const QSize wanted_overlay_px = physical_overlay_size(m_size, m_overlay_dpr);
-    if (m_immediate_overlay.size() != wanted_overlay_px
-        || m_immediate_overlay.devicePixelRatio() != m_overlay_dpr) {
-        m_immediate_overlay = QImage(
-            wanted_overlay_px, QImage::Format_ARGB32_Premultiplied);
-        m_immediate_overlay.setDevicePixelRatio(m_overlay_dpr);
-    }
-
-    m_immediate_overlay.fill(Qt::transparent);
-
-    m_immediate_overlay_painter.begin(&m_immediate_overlay);
-    m_immediate_overlay_painter.setAntialias(false);
-    m_immediate_overlay_painter.setSmoothPixmap(false);
+    begin_overlay_frame(m_immediate_overlay, m_immediate_overlay_painter);
     m_immediate_renderer->set_painter(&m_immediate_overlay_painter);
     m_immediate_renderer->reset_attributes();
 }
+
 // ---- helpers ---------------------------------------------------------------
 
 
