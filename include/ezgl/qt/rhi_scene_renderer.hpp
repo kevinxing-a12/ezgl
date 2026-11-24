@@ -27,8 +27,8 @@ namespace ezgl {
  * @brief GPU pipeline state and per-frame resources for the rhi backend.
  *
  * Owns all @c QRhi objects: 7 graphics pipelines, shader resource
- * bindings, uniform/vertex buffers, overlay texture+sampler, and the
- * per-frame-slot geometry cache. Works with any @c QRhi instance — the
+ * bindings, uniform/vertex buffers, two overlay textures with a shared sampler,
+ * and the per-frame-slot geometry cache. Works with any @c QRhi instance — the
  * display path hands it the @c QRhiWidget's internal @c QRhi, the
  * headless path hands it a standalone @c QRhi built on
  * @c QOffscreenSurface.
@@ -42,7 +42,7 @@ namespace ezgl {
  * | 4 | m_dashed_line_pso  | TriangleStrip, instanced quad (corner buf)     | dashed_line.vert + dashed_line.frag  |
  * | 5 | m_thick_line_pso   | TriangleStrip, instanced quad (corner buf)     | thick_line.vert + base.frag          |
  * | 6 | m_arrow_pso        | Triangles, 3 verts/instance via gl_VertexIndex | arrow.vert + base.frag               |
- * | 7 | m_overlay_pso      | TriangleStrip, one full-screen quad            | overlay.vert + overlay.frag (sampler)|
+ * | 7 | m_overlay_pso      | TriangleStrip, one full-screen quad per overlay | overlay.vert + overlay.frag (sampler)|
  *
  * @c base.vert is the minimal pass-through vertex shader
  * (@c vec2 inPosition → @c mvp * pos) shared by every pipeline whose
@@ -52,11 +52,11 @@ namespace ezgl {
  * shaders are pipeline-specific.
  *
  * Render order is painter's-algorithm: fills first, then lines, then
- * arrows, then the QPainter overlay (text/arcs) composited on top.
- * Depth test/write disabled (2D). All pipelines use straight alpha blend
- * (SrcAlpha / OneMinusSrcAlpha) and call
- * @c setSampleCount(EZGL_RHI_SAMPLE_COUNT) so they match the render
- * target's MSAA configuration.
+ * arrows, then the persistent overlay, then the immediate overlay.
+ * Depth test/write disabled (2D). Geometry uses straight alpha blending
+ * (SrcAlpha / OneMinusSrcAlpha), and both overlays use premultiplied alpha.
+ * All pipelines call @c setSampleCount(EZGL_RHI_SAMPLE_COUNT) so they match
+ * the render target's MSAA configuration.
  *
  * @par UBO bindings (same layout across all shaders for SRB compatibility)
  * - binding 0 — @c mat4 mvp + @c vec2 viewport (per-frame, shared by all draws)
@@ -69,7 +69,7 @@ namespace ezgl {
  * @par Per-frame-slot resources
  * QRhi pipelines frames-in-flight (2–3 GPU frames overlap). Each slot
  * gets its own @ref FrameResources with separate buffers, SRBs, and
- * overlay texture. @c m_frame_slot_geom_valid tracks which slots already
+ * overlay textures. @c m_frame_slot_geom_valid tracks which slots already
  * hold the current geometry revision; lazy re-upload via
  * @c m_cached_scene keeps stale slots in sync without re-uploading
  * every frame.
@@ -103,7 +103,8 @@ public:
     void initialize(QRhi* rhi, QRhiRenderPassDescriptor* rp_desc);
 
     /**
-     * Upload geometry / uniforms for @p frame_slot and record draw commands.
+     * Upload geometry, uniforms, and overlay textures for @p frame_slot and
+     * record draw commands.
      *
      * @par State-change rate
      * The render loop is structured for the minimum possible GPU state
@@ -112,7 +113,8 @@ public:
      * (carrying the @c style_ubuf color slot) is bound **once per
      * style key**; @c cmdDraw is issued **only for chunks whose
      * world_bounds intersects @p visible_world**. Non-visible chunks
-     * cost a CPU AABB test and nothing more.
+     * cost a CPU AABB test and nothing more. Each overlay uses the shared
+     * overlay pipeline with its own texture binding.
      *
      * @param cb            Command buffer in recording state.
      * @param rt            Render target to draw into.
@@ -123,6 +125,7 @@ public:
      * @param mvp           World-to-NDC matrix.
      * @param visible_world Current visible world rectangle (for tile culling).
      * @param persistent_overlay       QPainter overlay image (text, arcs, …).
+     * @param immediate_overlay_in     QPainter image drawn by the immediate callback.
      * @param bg            Background clear colour.
      */
     void render(QRhiCommandBuffer*                         cb,
@@ -209,7 +212,7 @@ private:
 
     /// All GPU objects owned by one frame-in-flight slot. QRhi overlaps 2–3
     /// GPU frames, so each slot keeps its own buffers, SRBs, and overlay
-    /// texture — this lets the CPU record frame N+1 while the GPU still reads
+    /// textures — this lets the CPU record frame N+1 while the GPU still reads
     /// frame N's resources without hazards. One vector of VBOs per primitive
     /// type because a single style's geometry may span several buffers (see
     /// @ref GpuChunk::buffer_index).
@@ -243,12 +246,12 @@ private:
     std::unique_ptr<QRhiGraphicsPipeline>  m_thick_line_pso;  ///< Instanced screen-width lines.
     std::unique_ptr<QRhiGraphicsPipeline>  m_dashed_line_pso; ///< Instanced dashed lines.
     std::unique_ptr<QRhiGraphicsPipeline>  m_arrow_pso;       ///< Instanced arrow heads.
-    std::unique_ptr<QRhiGraphicsPipeline>  m_overlay_pso;     ///< Full-screen textured quad compositing the QPainter overlay.
+    std::unique_ptr<QRhiGraphicsPipeline>  m_overlay_pso;     ///< Full-screen textured quad compositing both QPainter overlays.
 
     // Shared buffers (constant geometry, shared across all frame slots)
     std::unique_ptr<QRhiBuffer>            m_thick_line_corner_vbuf; ///< Unit quad corners expanded per thick/dashed instance in the vertex shader.
     std::unique_ptr<QRhiBuffer>            m_overlay_quad_vbuf;      ///< Full-screen quad for the overlay pass.
-    std::unique_ptr<QRhiSampler>           m_overlay_sampler;        ///< Sampler for the overlay texture.
+    std::unique_ptr<QRhiSampler>           m_overlay_sampler;        ///< Shared sampler for both overlay textures.
 
     // Per-frame-slot resources.
     //
