@@ -195,13 +195,16 @@ public:
    * If the canvas has already been added, it will not be overwritten and a warning will be displayed.
    *
    * @param canvas_id The id of the DrawingAreaWidget (or RhiCanvasWidget under the rhi backend) in the .ui XML file.
-   * @param draw_persistent_callback The function to call that draws to this canvas.
+   * @param draw_persistent_callback The function that draws the main scene on a full redraw.
    * @param coordinate_system The initial coordinate system of this canvas. 
    *            coordinate_system.first gives the (x,y) world coordinates of the lower left corner, 
    *            and coordinate_system.second gives the (x,y) coordinates of the upper right corner.
    * @param background_color (OPTIONAL) The color of the canvas background. Default is WHITE.
    *
    * @return A pointer to the newly created canvas.
+   * 
+   * @see canvas::set_decide_reuse_geometry_callback to register the optional callback for deciding camera-only redraws.
+   * @see canvas::set_draw_immediate_callback to register the optional immediate draw callback.
    */
   canvas *add_canvas(std::string const &canvas_id,
       draw_canvas_persistent_fn draw_persistent_callback,
