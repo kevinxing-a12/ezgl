@@ -20,11 +20,10 @@ class rhi_renderer;
  *       They are defined once in the glossary at the top of @ref rhi_types.hpp.
  *
  * Owns a persistent @ref rhi_renderer plus the redraw-suspension scheduling
- * state (the suspend flag and pending-redraw flags). Full redraws go through
- * @ref rhi_renderer::flush() — the heavy path: it re-runs the draw callback and
- * re-uploads scene geometry to the GPU. Camera-only redraws go through
- * @ref rhi_renderer::flush_mvp_only(), which is cheap: it only updates the MVP
- * transform on the GPU and reuses the existing geometry buffers.
+ * state (the suspend flag and pending-redraw flags). Full redraws run both
+ * draw callbacks and submit rebuilt scene geometry via @ref rhi_renderer::flush().
+ * Camera-only redraws reuse the scene geometry, run the immediate draw callback,
+ * and replay the persistent overlay commands for the updated view.
  *
  * @par Suspend / pending flag state machine
  * For why this bracket exists at all, who calls it, and why only the RHI
@@ -47,7 +46,7 @@ class rhi_renderer;
  * @par Headless capture
  * @ref render_to_image() never touches the on-screen widget or its
  * @ref rhi_renderer. It constructs a transient @ref rhi_renderer via the
- * headless (size-based) constructor, runs the draw callback through it,
+ * headless (size-based) constructor, runs both draw callbacks,
  * calls @ref rhi_renderer::flush_capture(), and passes the captured
  * frame into the static helper @ref RhiCanvasWidget::render_offscreen(),
  * which builds its own standalone @c QRhi over @c QOffscreenSurface. No
@@ -56,11 +55,11 @@ class rhi_renderer;
 class rhi_backend final : public render_backend {
 public:
     /// Construct an on-screen GPU backend bound to an existing
-    /// @ref RhiCanvasWidget. Stores the draw callback (run on every full
-    /// redraw), the decide_reuse_geometry callback (tells redraw_at_view_change()
+    /// @ref RhiCanvasWidget. Stores both draw callbacks, the
+    /// decide_reuse_geometry callback (tells redraw_at_view_change()
     /// whether to perform a camera-only or full redraw), the @ref camera (queried for the MVP), and the background
     /// clear color. The owned @ref rhi_renderer is created lazily on the first
-    /// @ref redraw(); none of the arguments are owned by this backend.
+    /// @ref redraw(). The widget and camera are borrowed.
     rhi_backend(RhiCanvasWidget*         widget,
                 draw_canvas_persistent_fn draw_persistent_callback,
                 draw_canvas_immediate_fn  draw_immediate_callback,
@@ -68,12 +67,12 @@ public:
                 camera*                  cam,
                 color                    background_color);
 
-    /// Destroys the owned @ref rhi_renderer. The widget, camera, and draw
-    /// callback are non-owning and outlive this backend.
+    /// Destroys the owned @ref rhi_renderer. The widget and camera are
+    /// non-owning and outlive this backend.
     ~rhi_backend() override;
 
-    /// Full redraw: (re)create the @ref rhi_renderer if needed, run the draw
-    /// callback, and present a GPU frame via @ref rhi_renderer::flush(). Always
+    /// Full redraw: (re)create the @ref rhi_renderer if needed, run both draw
+    /// callbacks, and present a GPU frame via @ref rhi_renderer::flush(). Always
     /// flushes immediately; it is not deferred while redrawing is suspended
     /// (@ref suspend_redraw / @ref resume_redraw) — only @ref on_resize defers.
     void redraw() override;
@@ -85,8 +84,9 @@ public:
      */
     void redraw_at_view_change(view_change_reason reason) override;
 
-    /// Camera-only redraw: performs a MVP transformation via @ref rhi_renderer::flush_mvp_only() instead of
-    /// calling the expensive @ref redraw(). Always flushes immediately; it is not deferred
+    /// Camera-only redraw: reuse the geometry from a completed full redraw,
+    /// run the immediate draw callback, and update the MVP and overlays via
+    /// @ref rhi_renderer::flush_mvp_only(). Always flushes immediately; it is not deferred
     /// while redrawing is suspended (@ref suspend_redraw / @ref resume_redraw) — only @ref on_resize defers.
     void redraw_camera_only();
 
@@ -131,7 +131,7 @@ public:
 private:
     RhiCanvasWidget*              m_widget;                         ///< Non-owning on-screen canvas this backend presents into.
     draw_canvas_persistent_fn m_draw_persistent_callback;     ///< User draw routine re-run on every full redraw.
-    draw_canvas_immediate_fn  m_draw_immediate_callback = nullptr;
+    draw_canvas_immediate_fn  m_draw_immediate_callback; ///< Draw routine run on full and camera-only redraws.
     decide_reuse_geometry_fn      m_decide_reuse_geometry_callback; ///< Callback used to determine if the cached geometry can be reused for a camera-only redraw.
     camera*                       m_camera;                         ///< Non-owning camera supplying the world→screen MVP.
     QColor                        m_bg_color;                       ///< Frame clear color.
