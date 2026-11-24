@@ -19,7 +19,7 @@ the battle:
 
 | Class | Lives on | Job |
 | ----- | -------- | --- |
-| **`rhi_backend`** | main thread | Lifecycle wrapper. Owns the renderer, runs the app's draw callback, decides *full redraw* vs *camera-only* vs *headless*. |
+| **`rhi_backend`** | main thread | Lifecycle wrapper. Owns the renderer, runs the persistent and immediate draw callbacks, decides *full redraw* vs *camera-only* vs *headless*. |
 | **`rhi_renderer`** | main thread | The **recording** side. Turns `draw_line`/`fill_rectangle`/… calls into compact data, sorts it into screen tiles, and packs it into a `SceneBuffers`. |
 | **`RhiCanvasWidget`** | bridge | A `QRhiWidget`. Holds a thread-safe "inbox" of the next frame, and is the thing Qt actually paints. |
 | **`RhiSceneRenderer`** | render thread | The **GPU** side. Owns all pipelines/buffers, uploads the geometry, and issues the draw calls that light pixels. |
@@ -33,37 +33,44 @@ decides *how* to push it to the GPU.** They hand off through the widget's inbox.
 
 Three kinds of arrow, one per path the backend can take:
 
-- **solid** — *full redraw* (`redraw()`): the scene geometry changed.
-- **dashed** — *camera-only* (`redraw_camera_only()`): you panned/zoomed, geometry is unchanged, so only the ~80-byte MVP matrix and the text overlay move.
-- **thick** — *headless* (`render_to_image()`): render straight to a PNG with its own throw-away `QRhi`, no window, no render thread.
+- **solid** — *full redraw* (`redraw()`): A full redraw runs both callbacks and rebuilds the scene geometry.
+- **dashed** — *camera-only* (`redraw_camera_only()`): RHI reuses the scene geometry, reruns the immediate callback, and replays the persistent overlay commands for the updated view.
+- **thick** — *headless* (`render_to_image()`): render straight to a PNG through both callbacks with its own throw-away `QRhi`, no window, no render thread.
 
 ```mermaid
 flowchart TD
     subgraph MAIN["Main thread"]
-        APP["Application draw callback<br/>draw_line / fill_rectangle /<br/>draw_text ..."]
-        REC["rhi_renderer<br/>1. record each call as<br/>a compact command<br/>2. sort commands into a<br/>32x32 screen-tile grid<br/>3. build_scene_buffers()"]
-        APP -->|"per primitive"| REC
+        APP["Persistent draw callback"]
+        REC["rhi_renderer<br/>Record geometry and<br/>persistent overlay commands"]
+        IMM["Immediate draw callback<br/>Paint the immediate overlay"]
+        FULL["flush()<br/>Build SceneBuffers and<br/>replay the persistent overlay"]
+        CAMERA["flush_mvp_only()<br/>Replay the persistent overlay<br/>and reuse SceneBuffers"]
+
+        APP --> REC
+        REC --> FULL
+        IMM --> FULL
+        REC -.->|"cached overlay commands"| CAMERA
+        IMM -.-> CAMERA
     end
 
-    SB["SceneBuffers<br/>geometry as flat<br/>GPU-ready arrays,<br/>grouped by style,<br/>split into per-tile Chunks"]
-
     subgraph INBOX["RhiCanvasWidget — thread-safe inbox (QMutex)"]
-        BOX["pending: SceneBuffers +<br/>MVP + overlay image"]
+        BOX["pending: scene geometry, MVP,<br/>visible world, and both overlays"]
     end
 
     subgraph RENDER["Render thread"]
-        SR["RhiSceneRenderer::render()<br/>upload VBO/UBO (only if<br/>geometry changed)<br/>cmdDraw per Chunk whose<br/>bounds are on screen<br/>composite text/arc overlay<br/>on top"]
+        SR["RhiSceneRenderer::render()<br/>Upload VBO/UBO if geometry changed<br/>Update the MVP and upload overlays<br/>Draw geometry, then the persistent<br/>overlay, then the immediate overlay"]
         GPU["GPU runs shaders →<br/>rasterizes pixels"]
         SR --> GPU
     end
 
-    REC -->|"flush()"| SB
-    SB -->|"set_frame_data()"| BOX
-    REC -.->|"flush_mvp_only():<br/>set_mvp_and_overlay()<br/>reuses geometry<br/>already on the GPU"| BOX
+    FULL -->|"set_frame_data()"| BOX
+    CAMERA -.->|"set_mvp_and_overlay()"| BOX
     BOX -->|"render() snapshots<br/>under lock"| SR
     GPU --> SCREEN["Screen"]
 
-    REC ==>|"flush_capture() →<br/>render_offscreen()<br/>own QRhi, MSAA offscreen<br/>target, read pixels back"| PNG["QImage / PNG file"]
+    REC ==> CAP["flush_capture()<br/>SceneBuffers, MVP, and both overlays"]
+    IMM ==> CAP
+    CAP ==>|"render_offscreen()"| IMG["QImage"]
 ```
 
 ---
@@ -111,14 +118,16 @@ above. Two details make this safe and fast:
 
 ---
 
-## Where the overlay (text and arcs) fits
+## Where the overlays fit
 
 Text, arcs, and blitted images do **not** go through the GPU geometry path. They
-are painted with a normal `QPainter` onto a transparent `QImage` (the *overlay*),
-uploaded as a texture, and composited on top of the GPU-drawn geometry as the very
-last step of `RhiSceneRenderer::render()` (the "composite … overlay on top" line in
-the diagram). That is why text stays crisp and always sits above the lines and
-fills, regardless of draw order.
+are painted with a normal `QPainter` onto the **persistent overlay**, through a `deferred renderer`. RHI replays those commands for camera only redraws. The immediate draw callback
+paints directly into the **immediate overlay** through an `immediate_renderer`,
+so it can update view-dependent drawing while the scene geometry is reused.
+
+Both overlays are transparent `QImage`s uploaded as textures.
+`RhiSceneRenderer::render()` draws the GPU geometry first, composites the
+persistent overlay over it, then draws the immediate overlay on top.
 
 ---
 
